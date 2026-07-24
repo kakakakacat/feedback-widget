@@ -65,7 +65,8 @@
     ".fbw-item .fbw-rm{border:none;background:transparent;color:rgba(235,235,245,.6);cursor:pointer;font-size:16px;padding:0 2px}" +
     ".fbw-item .fbw-rm:hover{color:#fff}" +
     ".fbw-item.fbw-big{border-color:rgba(255,90,90,.5)}" +
-    ".fbw-ts{margin-bottom:12px;min-height:1px}" +
+    ".fbw-ts{margin-bottom:12px;width:100%;min-height:65px;display:flex;justify-content:center}" +
+    ".fbw-ts iframe{max-width:100%}" +
     ".fbw-foot{display:flex;align-items:center;gap:12px;margin-top:16px}" +
     ".fbw-status{flex:1;font-size:12.5px;color:rgba(235,235,245,.6)}" +
     ".fbw-status.fbw-err{color:#ff8a8a}.fbw-status.fbw-ok{color:#7fe0a3}" +
@@ -105,7 +106,19 @@
   }
   function renderTurnstile() {
     if (!tsReady || !tsContainer || tsWidgetId !== null || !window.turnstile) return;
-    tsWidgetId = window.turnstile.render(tsContainer, { sitekey: CFG.turnstileKey, theme: "dark" });
+    try {
+      tsWidgetId = window.turnstile.render(tsContainer, {
+        sitekey: CFG.turnstileKey,
+        theme: "dark",
+        size: "flexible", // fill the container width so it never gets clipped
+        retry: "auto",
+        "error-callback": function () {
+          setStatus("人机验证加载失败，请刷新或检查网络。", "err");
+        },
+      });
+    } catch (e) {
+      setStatus("人机验证加载失败：" + (e.message || e), "err");
+    }
   }
   function turnstileToken() {
     if (!CFG.turnstileKey) return null; // verification not enabled
