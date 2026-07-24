@@ -34,6 +34,27 @@ export async function onRequestPost(context) {
     return json({ error: "invalid form data" }, 400);
   }
 
+  // Optional Cloudflare Turnstile check — enforced only when the secret is set.
+  const tsSecret = env.TURNSTILE_SECRET;
+  if (tsSecret) {
+    const token = form.get("cf-turnstile-response");
+    if (!token) return json({ error: "需要人机验证" }, 403);
+    try {
+      const vr = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+        method: "POST",
+        body: new URLSearchParams({
+          secret: tsSecret,
+          response: String(token),
+          remoteip: request.headers.get("CF-Connecting-IP") || "",
+        }),
+      });
+      const vj = await vr.json();
+      if (!vj.success) return json({ error: "人机验证失败，请重试" }, 403);
+    } catch {
+      return json({ error: "人机验证服务不可用" }, 503);
+    }
+  }
+
   const files = form.getAll("files").filter((f) => f && typeof f.arrayBuffer === "function");
   if (!files.length) return json({ error: "no files" }, 400);
   if (files.length > maxFiles) return json({ error: `一次最多 ${maxFiles} 个文件` }, 400);

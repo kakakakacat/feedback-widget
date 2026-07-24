@@ -25,6 +25,8 @@
     // When empty, the file UI is hidden and only text is sent.
     uploadUrl: (script && script.getAttribute("data-upload-url")) || "",
     maxFileMB: Number((script && script.getAttribute("data-max-file-mb")) || 100),
+    // Cloudflare Turnstile site key. When set, a human check is required.
+    turnstileKey: (script && script.getAttribute("data-turnstile-key")) || "",
   };
   var ENDPOINT = "https://api.web3forms.com/submit";
 
@@ -63,6 +65,7 @@
     ".fbw-item .fbw-rm{border:none;background:transparent;color:rgba(235,235,245,.6);cursor:pointer;font-size:16px;padding:0 2px}" +
     ".fbw-item .fbw-rm:hover{color:#fff}" +
     ".fbw-item.fbw-big{border-color:rgba(255,90,90,.5)}" +
+    ".fbw-ts{margin-bottom:12px;min-height:1px}" +
     ".fbw-foot{display:flex;align-items:center;gap:12px;margin-top:16px}" +
     ".fbw-status{flex:1;font-size:12.5px;color:rgba(235,235,245,.6)}" +
     ".fbw-status.fbw-err{color:#ff8a8a}.fbw-status.fbw-ok{color:#7fe0a3}" +
@@ -87,6 +90,30 @@
   // ---------- build DOM ----------
   var files = [];
   var overlay, modal, listEl, statusEl, sendBtn, fileInput, dropEl, msgEl, contactEl;
+
+  // ---------- Cloudflare Turnstile (optional) ----------
+  var tsWidgetId = null, tsReady = false, tsContainer = null;
+
+  function loadTurnstile() {
+    if (!CFG.turnstileKey || document.getElementById("fbw-ts-script")) return;
+    window.__fbwTsReady = function () { tsReady = true; renderTurnstile(); };
+    var s = document.createElement("script");
+    s.id = "fbw-ts-script";
+    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=__fbwTsReady";
+    s.async = true; s.defer = true;
+    document.head.appendChild(s);
+  }
+  function renderTurnstile() {
+    if (!tsReady || !tsContainer || tsWidgetId !== null || !window.turnstile) return;
+    tsWidgetId = window.turnstile.render(tsContainer, { sitekey: CFG.turnstileKey, theme: "dark" });
+  }
+  function turnstileToken() {
+    if (!CFG.turnstileKey) return null; // verification not enabled
+    return window.turnstile && tsWidgetId !== null ? window.turnstile.getResponse(tsWidgetId) : "";
+  }
+  function turnstileReset() {
+    if (window.turnstile && tsWidgetId !== null) window.turnstile.reset(tsWidgetId);
+  }
 
   function injectStyle() {
     var style = document.createElement("style");
@@ -122,10 +149,12 @@
       '<textarea class="fbw-field fbw-msg" placeholder="写下你的想法、建议或问题…（可直接粘贴截图）"></textarea>' +
       '<input class="fbw-field fbw-contact" type="text" placeholder="你的邮箱或联系方式（选填，方便回复你）" />' +
       fileUI +
+      (CFG.turnstileKey ? '<div class="fbw-ts"></div>' : "") +
       '<div class="fbw-foot"><span class="fbw-status"></span><button class="fbw-send" type="button">发送留言</button></div>' +
       "</div>";
     document.body.appendChild(overlay);
 
+    tsContainer = overlay.querySelector(".fbw-ts");
     modal = overlay.querySelector(".fbw-modal");
     listEl = overlay.querySelector(".fbw-list");
     statusEl = overlay.querySelector(".fbw-status");
@@ -202,6 +231,8 @@
     requestAnimationFrame(function () { overlay.classList.add("fbw-show"); });
     document.addEventListener("keydown", onKey);
     document.addEventListener("paste", onPaste);
+    loadTurnstile();
+    renderTurnstile();
     setTimeout(function () { msgEl.focus(); }, 50);
   }
 
@@ -220,6 +251,11 @@
     if (!msg && !files.length) { setStatus("请先写点什么，或添加一个文件。", "err"); return; }
     if (!CFG.accessKey) { setStatus("未配置 access key。", "err"); return; }
 
+    // Turnstile guards the R2 upload endpoint (the flood-sensitive one), so it
+    // is only required when there are attachments to upload.
+    var tsTok = turnstileToken();
+    if (CFG.turnstileKey && files.length && !tsTok) { setStatus("请先完成人机验证。", "err"); return; }
+
     sendBtn.disabled = true;
     var orig = sendBtn.textContent;
     sendBtn.textContent = "发送中…";
@@ -232,11 +268,13 @@
         setStatus("正在上传附件…");
         var ufd = new FormData();
         files.forEach(function (f) { ufd.append("files", f, f.name); });
+        if (tsTok) ufd.append("cf-turnstile-response", tsTok);
         var ur = await fetch(CFG.uploadUrl, { method: "POST", body: ufd });
         var uj = await ur.json().catch(function () { return {}; });
         if (!ur.ok || !uj.files) throw new Error((uj && uj.error) || "上传失败 HTTP " + ur.status);
         attachText = "\n\n附件（" + uj.files.length + "）：\n" +
           uj.files.map(function (f) { return "• " + f.name + " (" + fmtSize(f.size) + ")\n  " + f.url; }).join("\n");
+        turnstileReset(); // token is single-use
       }
 
       // 2) Send the message (with attachment links) via Web3Forms — text only,
@@ -264,6 +302,7 @@
         setStatus("发送失败：" + (jr.message || "HTTP " + res.status), "err");
       }
     } catch (err) {
+      turnstileReset(); // let the user get a fresh token and retry
       setStatus("发送失败：" + (err.message || err), "err");
     } finally {
       sendBtn.disabled = false;

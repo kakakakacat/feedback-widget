@@ -59,6 +59,15 @@
 | `data-accent` | 否 | 强调色，默认 `#ff4c61` |
 | `data-upload-url` | 否 | 附件上传接口地址；不填则隐藏文件功能、只发文字 |
 | `data-max-file-mb` | 否 | 单文件大小上限（MB），默认 `100` |
+| `data-turnstile-key` | 否 | Cloudflare Turnstile 站点密钥；配置后上传附件前需过人机验证 |
+
+## 防刷 / 安全
+
+上传接口是公开的，为避免被恶意刷爆 R2，内置了多层防护：
+
+- **容量封顶 + 淘汰**：总量超过 `FEEDBACK_CAP_BYTES`（默认约 9.5GB）时，按上传时间删最老文件，永不超免费 10GB。
+- **单请求限制**（环境变量可调）：`FEEDBACK_MAX_FILES`（默认 6）、`FEEDBACK_MAX_FILE_BYTES`（默认 25MB）、`FEEDBACK_MAX_REQUEST_BYTES`（默认 50MB）。
+- **Cloudflare Turnstile（推荐）**：在控制台建一个 Turnstile widget，把 **Site Key** 填到 `data-turnstile-key`，把 **Secret Key** 设为 Pages 项目的加密环境变量 `TURNSTILE_SECRET`。配置后，上传接口会校验人机验证 token，机器人被拦在门外。仅拦附件上传（写 R2 的接口），纯文字留言不打扰。
 
 ## R2 容量与淘汰
 
