@@ -6,7 +6,8 @@
  * stay within the R2 free 10 GB). When the bucket would exceed the cap, the
  * oldest objects are evicted (by upload time) until the new files fit.
  */
-const DEFAULT_CAP = 9.5 * 1024 * 1024 * 1024;
+const DEFAULT_CAP = 9.5 * 1024 * 1024 * 1024; // total bucket cap (free tier is 10 GB)
+const MB = 1024 * 1024;
 
 function json(obj, status) {
   return new Response(JSON.stringify(obj), {
@@ -21,6 +22,10 @@ export async function onRequestPost(context) {
   if (!bucket) return json({ error: "R2 bucket 未绑定 (FEEDBACK_BUCKET)" }, 500);
 
   const cap = Number(env.FEEDBACK_CAP_BYTES || DEFAULT_CAP);
+  // Per-request abuse limits (override via env).
+  const maxFiles = Number(env.FEEDBACK_MAX_FILES || 6);
+  const maxFileBytes = Number(env.FEEDBACK_MAX_FILE_BYTES || 25 * MB);
+  const maxReqBytes = Number(env.FEEDBACK_MAX_REQUEST_BYTES || 50 * MB);
 
   let form;
   try {
@@ -31,8 +36,15 @@ export async function onRequestPost(context) {
 
   const files = form.getAll("files").filter((f) => f && typeof f.arrayBuffer === "function");
   if (!files.length) return json({ error: "no files" }, 400);
+  if (files.length > maxFiles) return json({ error: `一次最多 ${maxFiles} 个文件` }, 400);
+  for (const f of files) {
+    if ((f.size || 0) > maxFileBytes) {
+      return json({ error: `单个文件不能超过 ${Math.round(maxFileBytes / MB)}MB` }, 413);
+    }
+  }
 
   const incoming = files.reduce((s, f) => s + (f.size || 0), 0);
+  if (incoming > maxReqBytes) return json({ error: `单次上传总大小不能超过 ${Math.round(maxReqBytes / MB)}MB` }, 413);
   if (incoming > cap) return json({ error: "文件总大小超过容量上限" }, 413);
 
   try {
