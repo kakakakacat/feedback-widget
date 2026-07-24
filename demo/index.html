@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>feedback-widget · 演示</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+        font-family: -apple-system, system-ui, "PingFang SC", sans-serif;
+        background: #0b0b12; color: #f5f5f7; text-align: center; padding: 24px; }
+      code { background: rgba(255,255,255,.1); padding: 2px 7px; border-radius: 6px; }
+      a { color: #ff8a5c; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <h1>feedback-widget 演示</h1>
+      <p>点击右下角的 <b>✉️ 留言</b> 按钮试试。</p>
+      <p>把下面 <code>data-access-key</code> 换成你自己的即可实际发送。<br />
+        文件上传需按 <a href="../README.md">README</a> 配置 <code>data-upload-url</code>。</p>
+    </div>
+
+    <script
+      src="../feedback-widget.js"
+      data-access-key="YOUR_WEB3FORMS_ACCESS_KEY"
+      data-site="feedback-widget 演示"
+      data-accent="#ff6a3d"></script>
+  </body>
+</html>
